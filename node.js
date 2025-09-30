@@ -1,9 +1,12 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
+const express = require("express");
 const fs = require("fs");
 const path = require("path");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+const app = express();
+const PORT = process.env.PORT || 10000;
 
 // ====== Настройки ======
 const allowedNumbers = new Set([
@@ -19,13 +22,11 @@ const allowedNumbers = new Set([
   "380992951015"
 ]);
 
-const groupChatId = -1001234567890; // ID твоей группы
-const groupInviteLink = "https://t.me/joinchat/AAAAAAAAAAAAAAA"; // ссылка на группу
+const groupChatId = -1002962297388; // твой chat_id
+const groupInviteLink = "https://t.me/+s8WYdCNs-EgxM2Qy"; // ссылка на группу
 
 // ====== JSON для хранения подтверждённых пользователей ======
 const dataFile = path.join(__dirname, "verifiedUsers.json");
-
-// Загрузить подтверждённых пользователей при старте
 let verifiedUsers = new Set();
 if (fs.existsSync(dataFile)) {
   const raw = fs.readFileSync(dataFile);
@@ -37,14 +38,13 @@ if (fs.existsSync(dataFile)) {
   }
 }
 
-// Сохранить verifiedUsers в JSON
 function saveVerifiedUsers() {
   fs.writeFileSync(dataFile, JSON.stringify([...verifiedUsers]));
 }
 
-// =======================
+// ====== Команды бота ======
 
-// Команда /start — просит отправить контакт
+// /start — просит отправить контакт
 bot.start((ctx) => {
   ctx.reply(
     "Привет! Чтобы получить доступ к группе, поделись своим контактом:",
@@ -64,7 +64,7 @@ bot.on("contact", async (ctx) => {
   const normalized = c.phone_number.replace(/\D/g, "");
   if (allowedNumbers.has(normalized)) {
     verifiedUsers.add(ctx.from.id);
-    saveVerifiedUsers(); // сохраняем в JSON
+    saveVerifiedUsers();
     await ctx.reply(`Номер подтверждён ✅ Вот ссылка на группу: ${groupInviteLink}`);
   } else {
     await ctx.reply("Твой номер не найден в списке разрешённых.");
@@ -76,7 +76,6 @@ bot.on("chat_member", async (ctx) => {
   const member = ctx.chatMember?.new_chat_member?.user;
   if (!member) return;
 
-  // Кикаем, если пользователь не подтверждён
   if (!verifiedUsers.has(member.id)) {
     try {
       await ctx.telegram.kickChatMember(ctx.chat.id, member.id);
@@ -90,6 +89,18 @@ bot.on("chat_member", async (ctx) => {
 // Обработка кнопки "Отмена"
 bot.hears("Отмена", (ctx) => ctx.reply("Отмена. Если нужно — используй /start снова."));
 
-bot.launch().then(() => console.log("Bot started"));
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+// ====== Webhook для Render ======
+app.use(bot.webhookCallback(`/webhook/${process.env.BOT_TOKEN}`));
+
+app.get("/", (req, res) => {
+  res.send("Бот работает 🚀");
+});
+
+// выставляем webhook у Telegram
+bot.telegram.setWebhook(
+  `https://tgbot-9786.onrender.com/webhook/${process.env.BOT_TOKEN}`
+);
+
+app.listen(PORT, () => {
+  console.log(`Web server запущен на порту ${PORT}`);
+});
